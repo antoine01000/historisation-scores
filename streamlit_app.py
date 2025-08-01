@@ -51,7 +51,7 @@ if pd.notna(last_update):
     except Exception:
         st.markdown(f"**Dernière mise à jour enregistrée :** {last_update}")
 
-# ==== Choix de la vue ====
+# ==== Vue ====
 view = st.sidebar.radio("Vue", ["Métriques", "Scores"])
 
 # ==== Données communes ====
@@ -59,9 +59,14 @@ tickers_available = sorted(df["ticker"].dropna().unique())
 latest_date = df["date"].max()
 latest_snapshot = df[df["date"] == latest_date]
 
+# Initialisation persistée
+if "metrics_tickers" not in st.session_state:
+    st.session_state.metrics_tickers = tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
+if "scores_tickers" not in st.session_state:
+    st.session_state.scores_tickers = tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
+
 # --- Vue Métriques ---
 if view == "Métriques":
-    # métriques disponibles
     POSSIBLE_METRICS = [
         "10y_avg_annual_return_%", "10y_R2", "5y_avg_annual_return_%",
         "SBC_as_%_of_FCF", "net_debt_to_ebitda",
@@ -73,17 +78,24 @@ if view == "Métriques":
 
     st.sidebar.header("Filtres métriques")
     metric = st.sidebar.selectbox("Choisir la métrique", METRICS, key="metric_choice")
+
+    col1, col2 = st.sidebar.columns([1, 1])
+    if col1.button("Tout sélectionner métriques"):
+        st.session_state.metrics_tickers = tickers_available.copy()
+    if col2.button("Tout désélectionner métriques"):
+        st.session_state.metrics_tickers = []
+
     tickers_metrics = st.sidebar.multiselect(
         "Choisir entreprises (métriques)",
         options=tickers_available,
-        default=st.session_state.get("metrics_tickers", tickers_available[:3] if len(tickers_available) >= 3 else tickers_available),
+        default=st.session_state.metrics_tickers,
         key="metrics_tickers"
     )
 
     df_filtered = df[df["ticker"].isin(tickers_metrics)].sort_values(["ticker", "date", "horodatage"])
     scores_filtered_metrics = scores[scores["ticker"].isin(tickers_metrics)].sort_values(["ticker", "date"], ascending=[True, False])
 
-    st.subheader(f"Évolution de **{metric}** pour {', '.join(tickers_metrics)}")
+    st.subheader(f"Évolution de **{metric}** pour {', '.join(tickers_metrics) if tickers_metrics else '(aucune sélection)'}")
     if metric not in df.columns:
         st.warning(f"La métrique {metric} n'existe pas.")
     else:
@@ -104,7 +116,7 @@ if view == "Métriques":
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.warning("Aucune donnée pour la sélection métrique.")
+            st.info("Aucune donnée pour la sélection métrique.")
 
     st.subheader(f"Comparaison de **{metric}** sur la dernière date ({latest_date})")
     if metric in latest_snapshot.columns:
@@ -138,7 +150,9 @@ if view == "Métriques":
     else:
         st.subheader("Scores globaux (métriques)")
         if not scores_filtered_metrics.empty:
-            latest_scores_snapshot = scores_filtered_metrics[scores_filtered_metrics["date"] == scores_filtered_metrics["date"].max()]
+            latest_scores_snapshot = scores_filtered_metrics[
+                scores_filtered_metrics["date"] == scores_filtered_metrics["date"].max()
+            ]
             if not latest_scores_snapshot.empty:
                 st.dataframe(
                     latest_scores_snapshot[["ticker", "Score_sur_20", "Total_Score"]]
@@ -153,10 +167,16 @@ if view == "Métriques":
 # --- Vue Scores ---
 else:
     st.sidebar.header("Filtres scores")
+    col1s, col2s = st.sidebar.columns([1, 1])
+    if col1s.button("Tout sélectionner scores"):
+        st.session_state.scores_tickers = tickers_available.copy()
+    if col2s.button("Tout désélectionner scores"):
+        st.session_state.scores_tickers = []
+
     tickers_scores = st.sidebar.multiselect(
         "Choisir entreprises (scores)",
         options=tickers_available,
-        default=st.session_state.get("scores_tickers", tickers_available[:3] if len(tickers_available) >= 3 else tickers_available),
+        default=st.session_state.scores_tickers,
         key="scores_tickers"
     )
 
