@@ -56,23 +56,14 @@ if pd.notna(last_update):
 # ==== Sélection de la vue ====
 view = st.sidebar.radio("Vue", ["Métriques", "Scores"])
 
-# ==== Common selections ====
+# ==== Commun ====
 tickers_available = sorted(df["ticker"].dropna().unique())
-tickers_selected = st.sidebar.multiselect(
-    "Choisir une ou plusieurs entreprises",
-    options=tickers_available,
-    default=tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
-)
-
-# ==== Données dérivées ====
 latest_date = df["date"].max()
 latest_snapshot = df[df["date"] == latest_date]
-df_filtered = df[df["ticker"].isin(tickers_selected)].sort_values(["ticker", "date", "horodatage"])
-scores_filtered = scores[scores["ticker"].isin(tickers_selected)].sort_values(["ticker", "date"], ascending=[True, False])
 
 # --- Vue Métriques ---
 if view == "Métriques":
-    # Liste des métriques disponibles (intersection avec colonnes)
+    # métriques dispo
     POSSIBLE_METRICS = [
         "10y_avg_annual_return_%", "10y_R2", "5y_avg_annual_return_%",
         "SBC_as_%_of_FCF", "net_debt_to_ebitda",
@@ -84,8 +75,17 @@ if view == "Métriques":
 
     st.sidebar.header("Filtres métriques")
     metric = st.sidebar.selectbox("Choisir la métrique", METRICS)
+    tickers_metrics = st.sidebar.multiselect(
+        "Choisir une ou plusieurs entreprises (métriques)",
+        options=tickers_available,
+        default=tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
+    )
 
-    st.subheader(f"Évolution de **{metric}** pour {', '.join(tickers_selected)}")
+    # Filtrage
+    df_filtered = df[df["ticker"].isin(tickers_metrics)].sort_values(["ticker", "date", "horodatage"])
+    scores_filtered_metrics = scores[scores["ticker"].isin(tickers_metrics)].sort_values(["ticker", "date"], ascending=[True, False])
+
+    st.subheader(f"Évolution de **{metric}** pour {', '.join(tickers_metrics)}")
     if metric not in df.columns:
         st.warning(f"La métrique {metric} n'existe pas dans les données.")
     else:
@@ -127,9 +127,9 @@ if view == "Métriques":
     else:
         st.warning(f"{metric} absent de la dernière snapshot.")
 
-    # Détail (si un seul ticker)
-    if len(tickers_selected) == 1:
-        ticker = tickers_selected[0]
+    # Détail (si un seul ticker métrique)
+    if len(tickers_metrics) == 1:
+        ticker = tickers_metrics[0]
         st.subheader(f"Détail pour {ticker}")
         df_t = df[df["ticker"] == ticker].sort_values(["date", "horodatage"])
         st.markdown("**Dernière snapshot complète :**")
@@ -145,27 +145,35 @@ if view == "Métriques":
         else:
             st.info("Pas de score disponible pour ce ticker.")
     else:
-        st.subheader("Scores globaux des tickers sélectionnés")
-        if not scores.empty:
-            scores_filtered_latest = scores_filtered[scores_filtered["date"] == scores_filtered["date"].max()]
-            if not scores_filtered_latest.empty:
+        st.subheader("Scores globaux des tickers sélectionnés (métriques)")
+        if not scores_filtered_metrics.empty:
+            latest_scores_snapshot = scores_filtered_metrics[scores_filtered_metrics["date"] == scores_filtered_metrics["date"].max()]
+            if not latest_scores_snapshot.empty:
                 st.dataframe(
-                    scores_filtered_latest[["ticker", "Score_sur_20", "Total_Score"]]
+                    latest_scores_snapshot[["ticker", "Score_sur_20", "Total_Score"]]
                     .sort_values("Score_sur_20", ascending=False)
                     .reset_index(drop=True)
                 )
             else:
                 st.info("Pas de scores pour cette sélection.")
         else:
-            st.info("Fichier de scores introuvable ou vide.")
+            st.info("Fichier de scores introuvable ou vide pour cette sélection.")
 
 # --- Vue Scores ---
 else:
+    st.sidebar.header("Filtres scores")
+    tickers_scores = st.sidebar.multiselect(
+        "Choisir une ou plusieurs entreprises (scores)",
+        options=tickers_available,
+        default=tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
+    )
+
+    scores_filtered = scores[scores["ticker"].isin(tickers_scores)].sort_values(["ticker", "date"], ascending=[True, False])
+
     st.subheader("Évolution du Score sur 20")
     if scores_filtered.empty:
         st.warning("Aucune donnée de score disponible pour la sélection.")
     else:
-        # ligne temporelle du Score_sur_20
         fig_score = px.line(
             scores_filtered,
             x="date",
@@ -178,7 +186,6 @@ else:
         fig_score.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig_score, use_container_width=True)
 
-        # comparaison sur la dernière snapshot de score
         st.subheader(f"Classement des scores sur la dernière date ({scores['date'].max()})")
         if "Score_sur_20" in scores.columns:
             latest_scores_snapshot = scores[scores["date"] == scores["date"].max()]
@@ -198,9 +205,8 @@ else:
         else:
             st.warning("La colonne 'Score_sur_20' est absente du fichier de scores.")
 
-    # Détail score pour un seul ticker (si sélection unique)
-    if len(tickers_selected) == 1:
-        ticker = tickers_selected[0]
+    if len(tickers_scores) == 1:
+        ticker = tickers_scores[0]
         st.subheader(f"Détail du score pour {ticker}")
         if not scores.empty and ticker in scores["ticker"].values:
             score_t = scores[scores["ticker"] == ticker].sort_values("date", ascending=False)
@@ -210,7 +216,7 @@ else:
 
 # ==== Données brutes ====
 with st.expander("Afficher les données brutes"):
-    st.markdown("**DF historique filtré :**")
-    st.dataframe(df_filtered)
-    st.markdown("**Scores filtrés :**")
-    st.dataframe(scores_filtered)
+    st.markdown("**DF historique complet :**")
+    st.dataframe(df)
+    st.markdown("**Scores complet :**")
+    st.dataframe(scores)
