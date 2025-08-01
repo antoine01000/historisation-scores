@@ -1,0 +1,45 @@
+name: Historisation hebdo des scores
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'  # chaque lundi à 07:00 Europe/Paris = 05:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-history:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Exécuter export_scores.py
+        run: |
+          python export_scores.py
+
+      - name: Commit & push si changement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add historique_scores.csv
+            git commit -m "Historisation hebdo des scores $(date -u +'%Y-%m-%d')"
+            git push
+          else
+            echo "Pas de changement à committer."
+          fi
