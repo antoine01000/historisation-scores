@@ -1,8 +1,8 @@
-name: Historisation hebdo des scores
+name: Historisation hebdo du df et des scores
 
 on:
   schedule:
-    - cron: '0 5 * * 1'  # chaque lundi à 07:00 Europe/Paris = 05:00 UTC
+    - cron: '0 5 * * 1'  # chaque lundi 07:00 Europe/Paris = 05:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -28,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Exécuter export_scores.py
+      - name: Exécuter le script d'historisation
         run: |
           python export_scores.py
 
@@ -37,8 +37,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain)" ]; then
-            git add historique_scores.csv
-            git commit -m "Historisation hebdo des scores $(date -u +'%Y-%m-%d')"
+            git add historique_df.csv historique_scores.csv
+            git commit -m "Historisation hebdo du df et des scores $(date -u +'%Y-%m-%d')"
             git push
           else
             echo "Pas de changement à committer."
