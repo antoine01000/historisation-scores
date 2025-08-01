@@ -3,10 +3,20 @@ import pandas as pd
 
 st.set_page_config(layout="wide", page_title="Historique des métriques")
 
+# Fonction de rafraîchissement
+def do_refresh():
+    try:
+        if hasattr(st, "cache_data") and hasattr(st.cache_data, "clear"):
+            st.cache_data.clear()
+    except Exception:
+        # pas critique, on continue quand même
+        pass
+    # relance l'app pour recharger les données fraîches
+    st.experimental_rerun()
+
 # Bouton de rafraîchissement manuel
 if st.button("🔄 Rafraîchir les données"):
-    st.cache_data.clear()
-    st.experimental_rerun()
+    do_refresh()
 
 @st.cache_data
 def load_data():
@@ -30,19 +40,23 @@ if df.empty:
 # Affichage de la dernière mise à jour
 last_update = df["horodatage"].max()
 if pd.notna(last_update):
-    st.markdown(f"**Dernière mise à jour :** {last_update.strftime('%Y-%m-%d %H:%M:%S')}")
+    try:
+        st.markdown(f"**Dernière mise à jour :** {last_update.strftime('%Y-%m-%d %H:%M:%S')}")
+    except Exception:
+        st.markdown(f"**Dernière mise à jour :** {last_update}")
 
-# Liste des métriques disponibles (vérifie que ça correspond aux colonnes de df)
-METRICS = [
+# Liste des métriques disponibles (filtrée sur ce qui existe)
+POSSIBLE_METRICS = [
     "10y_avg_annual_return_%", "10y_R2", "5y_avg_annual_return_%",
     "SBC_as_%_of_FCF", "net_debt_to_ebitda",
     "Revenue_Growth_5Y", "Revenue_Growth_LastYear_%", "FreeCashFlow5Y",
     "EPS_Growth_5Y", "EPS_Growth_3Y", "ROIC_5Y", "ROI_ANNUAL",
     "Gross_Margin_5Y", "Gross_Margin_Annual"
 ]
+METRICS = [m for m in POSSIBLE_METRICS if m in df.columns]
 
 st.sidebar.title("Filtrer")
-metric = st.sidebar.selectbox("Choisir la métrique", [m for m in METRICS if m in df.columns])
+metric = st.sidebar.selectbox("Choisir la métrique", METRICS)
 ticker = st.sidebar.selectbox("Choisir l'entreprise", sorted(df["ticker"].unique()))
 
 # Filtrer pour le ticker sélectionné
@@ -51,7 +65,7 @@ score_ticker = scores[scores["ticker"] == ticker].sort_values("date", ascending=
 
 st.title(f"{ticker} — {metric}")
 
-# Affichage de l'évolution de la métrique dans le temps pour ce ticker
+# Évolution de la métrique
 st.subheader(f"Évolution de {metric}")
 if metric in df_ticker.columns:
     chart_data = df_ticker.set_index("horodatage")[metric]
@@ -62,7 +76,7 @@ if metric in df_ticker.columns:
 else:
     st.warning(f"La métrique {metric} n'est pas présente pour {ticker}.")
 
-# Valeurs les plus récentes pour tous les tickers (comparaison)
+# Comparaison sur la dernière date
 st.subheader(f"Comparaison sur la date la plus récente ({df['date'].max()})")
 latest_snapshot = df[df["date"] == df["date"].max()]
 if metric in latest_snapshot.columns:
@@ -72,14 +86,14 @@ if metric in latest_snapshot.columns:
 else:
     st.warning(f"{metric} absent de la snapshot la plus récente.")
 
-# Score global de l'entreprise
+# Score global historique
 st.subheader("Score global historique")
 if not score_ticker.empty:
     st.dataframe(score_ticker[["date", "Total_Score", "Score_sur_20"]].reset_index(drop=True))
 else:
     st.info("Pas de score disponible pour ce ticker.")
 
-# Dernière snapshot complète pour ce ticker
+# Dernière snapshot complète
 st.subheader("Dernière snapshot complète")
 if not df_ticker.empty:
     st.table(df_ticker.sort_values(["date", "horodatage"]).iloc[-1])
