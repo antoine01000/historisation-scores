@@ -51,7 +51,7 @@ if pd.notna(last_update):
     except Exception:
         st.markdown(f"**Dernière mise à jour enregistrée :** {last_update}")
 
-# ==== Vue ====
+# ==== Choix de la vue ====
 view = st.sidebar.radio("Vue", ["Métriques", "Scores"])
 
 # ==== Données communes ====
@@ -59,14 +59,9 @@ tickers_available = sorted(df["ticker"].dropna().unique())
 latest_date = df["date"].max()
 latest_snapshot = df[df["date"] == latest_date]
 
-# Initialisation persistée des sélections séparées
-if "metrics_tickers" not in st.session_state:
-    st.session_state.metrics_tickers = tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
-if "scores_tickers" not in st.session_state:
-    st.session_state.scores_tickers = tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
-
 # --- Vue Métriques ---
 if view == "Métriques":
+    # métriques disponibles
     POSSIBLE_METRICS = [
         "10y_avg_annual_return_%", "10y_R2", "5y_avg_annual_return_%",
         "SBC_as_%_of_FCF", "net_debt_to_ebitda",
@@ -81,7 +76,7 @@ if view == "Métriques":
     tickers_metrics = st.sidebar.multiselect(
         "Choisir entreprises (métriques)",
         options=tickers_available,
-        default=st.session_state.metrics_tickers,
+        default=st.session_state.get("metrics_tickers", tickers_available[:3] if len(tickers_available) >= 3 else tickers_available),
         key="metrics_tickers"
     )
 
@@ -161,7 +156,7 @@ else:
     tickers_scores = st.sidebar.multiselect(
         "Choisir entreprises (scores)",
         options=tickers_available,
-        default=st.session_state.scores_tickers,
+        default=st.session_state.get("scores_tickers", tickers_available[:3] if len(tickers_available) >= 3 else tickers_available),
         key="scores_tickers"
     )
 
