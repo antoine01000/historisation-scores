@@ -4,7 +4,6 @@ import plotly.express as px
 import os
 
 st.set_page_config(layout="wide", page_title="Historique des métriques fondamentales")
-
 st.title("📊 Exploration des métriques fondamentales")
 
 # ==== Rafraîchir ====
@@ -20,9 +19,9 @@ def do_refresh():
         try:
             st.rerun()
         except Exception:
-            st.warning("Impossible de relancer automatiquement, recharge la page manuellement.")
+            st.warning("Recharge la page manuellement.")
 
-if st.button("🔄 Rafraîchir les données", key="refresh_button"):
+if st.button("🔄 Rafraîchir les données"):
     do_refresh()
 
 # ==== Chargement des données ====
@@ -52,21 +51,17 @@ if pd.notna(last_update):
     except Exception:
         st.markdown(f"**Dernière mise à jour enregistrée :** {last_update}")
 
-# ==== Sélection de la vue ====
-view = st.sidebar.radio(
-    "Vue", 
-    ["Métriques", "Scores"], 
-    index=0, 
-    key="view_selection"
-)
+# ==== Choix de la vue ====
+view = st.sidebar.radio("Vue", ["Métriques", "Scores"])
 
-# ==== Valeurs communes ====
+# ==== Données communes ====
 tickers_available = sorted(df["ticker"].dropna().unique())
 latest_date = df["date"].max()
 latest_snapshot = df[df["date"] == latest_date]
 
 # --- Vue Métriques ---
 if view == "Métriques":
+    # métriques disponibles
     POSSIBLE_METRICS = [
         "10y_avg_annual_return_%", "10y_R2", "5y_avg_annual_return_%",
         "SBC_as_%_of_FCF", "net_debt_to_ebitda",
@@ -77,61 +72,83 @@ if view == "Métriques":
     METRICS = [m for m in POSSIBLE_METRICS if m in df.columns]
 
     st.sidebar.header("Filtres métriques")
-    metric = st.sidebar.selectbox("Choisir la métrique", METRICS, key="metric_selection")
+    metric = st.sidebar.selectbox("Choisir la métrique", METRICS, key="metric_choice")
     tickers_metrics = st.sidebar.multiselect(
         "Choisir entreprises (métriques)",
         options=tickers_available,
-        default=tickers_available[:3] if len(tickers_available) >= 3 else tickers_available,
-        key="tickers_metrics"
+        default=st.session_state.get("metrics_tickers", tickers_available[:3] if len(tickers_available) >= 3 else tickers_available),
+        key="metrics_tickers"
     )
 
-    # Filtrer les données
     df_filtered = df[df["ticker"].isin(tickers_metrics)].sort_values(["ticker", "date", "horodatage"])
     scores_filtered_metrics = scores[scores["ticker"].isin(tickers_metrics)].sort_values(["ticker", "date"], ascending=[True, False])
 
-    # Évolution de la métrique
     st.subheader(f"Évolution de **{metric}** pour {', '.join(tickers_metrics)}")
     if metric not in df.columns:
         st.warning(f"La métrique {metric} n'existe pas.")
-    elif df_filtered.empty:
-        st.warning("Aucune donnée pour ces tickers.")
     else:
-        df_plot = df_filtered.copy()
-        df_plot["date_snapshot"] = df_plot["date"].dt.date
-        df_plot = df_plot.sort_values(["ticker", "date_snapshot"])
-        fig = px.line(
-            df_plot, x="date_snapshot", y=metric, color="ticker", markers=True,
-            title=f"{metric} — évolution", labels={metric: metric, "date_snapshot": "Date"}
-        )
-        fig.update_xaxes(type="category", tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
+        if not df_filtered.empty:
+            df_plot = df_filtered.copy()
+            df_plot["date_snapshot"] = pd.to_datetime(df_plot["date"]).dt.date
+            df_plot = df_plot.sort_values(["ticker", "date_snapshot"])
+            fig = px.line(
+                df_plot,
+                x="date_snapshot",
+                y=metric,
+                color="ticker",
+                markers=True,
+                title=f"{metric} — évolution",
+                labels={metric: metric, "date_snapshot": "Date"}
+            )
+            fig.update_xaxes(type="category")
+            fig.update_layout(xaxis_tickangle=-45)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Aucune donnée pour la sélection métrique.")
 
-    # Comparaison dernière date
-    st.subheader(f"Comparaison de **{metric}** le {latest_date}")
+    st.subheader(f"Comparaison de **{metric}** sur la dernière date ({latest_date})")
     if metric in latest_snapshot.columns:
-        comp = latest_snapshot[["ticker", metric]].dropna().sort_values(by=metric, ascending=False)
+        comp = latest_snapshot[["ticker", metric]].dropna()
         if not comp.empty:
-            st.dataframe(comp.reset_index(drop=True))
-            bar = px.bar(comp, x="ticker", y=metric, labels={metric: metric})
+            comp_sorted = comp.sort_values(by=metric, ascending=False)
+            st.dataframe(comp_sorted.reset_index(drop=True))
+            bar = px.bar(comp_sorted, x="ticker", y=metric, labels={metric: metric})
             st.plotly_chart(bar, use_container_width=True)
         else:
-            st.info("Pas de valeurs disponibles.")
+            st.info("Pas de valeur disponible pour cette métrique.")
     else:
         st.warning(f"{metric} absent de la dernière snapshot.")
 
-    # Détail par ticker
     if len(tickers_metrics) == 1:
-        t = tickers_metrics[0]
-        st.subheader(f"Détail pour {t}")
-        df_t = df[df["ticker"] == t].sort_values(["date", "horodatage"])
+        ticker = tickers_metrics[0]
+        st.subheader(f"Détail pour {ticker}")
+        df_t = df[df["ticker"] == ticker].sort_values(["date", "horodatage"])
         st.markdown("**Dernière snapshot complète :**")
-        st.table(df_t.iloc[-1] if not df_t.empty else pd.DataFrame())
+        if not df_t.empty:
+            st.table(df_t.iloc[-1])
+        else:
+            st.info("Pas de données historiques pour ce ticker.")
+
         st.markdown("**Score historique :**")
-        if not scores.empty and t in scores["ticker"].values:
-            score_t = scores[scores["ticker"] == t].sort_values("date", ascending=False)
-            st.dataframe(score_t[["date", "Total_Score", "Score_sur_20"]])
+        if not scores.empty and ticker in scores["ticker"].values:
+            score_t = scores[scores["ticker"] == ticker].sort_values("date", ascending=False)
+            st.dataframe(score_t[["date", "Total_Score", "Score_sur_20"]].reset_index(drop=True))
         else:
             st.info("Pas de score disponible.")
+    else:
+        st.subheader("Scores globaux (métriques)")
+        if not scores_filtered_metrics.empty:
+            latest_scores_snapshot = scores_filtered_metrics[scores_filtered_metrics["date"] == scores_filtered_metrics["date"].max()]
+            if not latest_scores_snapshot.empty:
+                st.dataframe(
+                    latest_scores_snapshot[["ticker", "Score_sur_20", "Total_Score"]]
+                    .sort_values("Score_sur_20", ascending=False)
+                    .reset_index(drop=True)
+                )
+            else:
+                st.info("Pas de score récent pour cette sélection.")
+        else:
+            st.info("Aucun score pour cette sélection.")
 
 # --- Vue Scores ---
 else:
@@ -139,44 +156,59 @@ else:
     tickers_scores = st.sidebar.multiselect(
         "Choisir entreprises (scores)",
         options=tickers_available,
-        default=tickers_available[:3] if len(tickers_available) >= 3 else tickers_available,
-        key="tickers_scores"
+        default=st.session_state.get("scores_tickers", tickers_available[:3] if len(tickers_available) >= 3 else tickers_available),
+        key="scores_tickers"
     )
 
     scores_filtered = scores[scores["ticker"].isin(tickers_scores)].sort_values(["ticker", "date"], ascending=[True, False])
 
     st.subheader("Évolution du Score sur 20")
     if scores_filtered.empty:
-        st.warning("Aucune donnée de score.")
+        st.warning("Aucune donnée de score pour la sélection.")
     else:
         fig_score = px.line(
-            scores_filtered, x="date", y="Score_sur_20", color="ticker", markers=True,
-            title="Score sur 20 — évolution", labels={"Score_sur_20": "Score / 20", "date": "Date"}
+            scores_filtered,
+            x="date",
+            y="Score_sur_20",
+            color="ticker",
+            markers=True,
+            title="Évolution du Score sur 20",
+            labels={"Score_sur_20": "Score / 20", "date": "Date"}
         )
         fig_score.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig_score, use_container_width=True)
 
-        st.subheader(f"Classement le {scores['date'].max()}")
-        latest_scores = scores[scores["date"] == scores["date"].max()][["ticker", "Score_sur_20", "Total_Score"]]
-        if not latest_scores.empty:
-            st.dataframe(latest_scores.sort_values("Score_sur_20", ascending=False).reset_index(drop=True))
-            bar2 = px.bar(latest_scores, x="ticker", y="Score_sur_20", labels={"Score_sur_20": "Score / 20"})
-            st.plotly_chart(bar2, use_container_width=True)
-        else:
-            st.info("Pas de snapshot de scores.")
-
-        if len(tickers_scores) == 1:
-            t = tickers_scores[0]
-            st.subheader(f"Détail du score pour {t}")
-            score_t = scores[scores["ticker"] == t].sort_values("date", ascending=False)
-            if not score_t.empty:
-                st.dataframe(score_t[["date", "Total_Score", "Score_sur_20"]])
+        st.subheader(f"Classement sur la dernière date ({scores['date'].max()})")
+        if "Score_sur_20" in scores.columns:
+            latest_scores_snapshot = scores[scores["date"] == scores["date"].max()]
+            if not latest_scores_snapshot.empty:
+                ranking = latest_scores_snapshot[["ticker", "Score_sur_20", "Total_Score"]].sort_values("Score_sur_20", ascending=False)
+                st.dataframe(ranking.reset_index(drop=True))
+                bar2 = px.bar(
+                    ranking,
+                    x="ticker",
+                    y="Score_sur_20",
+                    title="Distribution du Score sur 20 (dernière snapshot)",
+                    labels={"Score_sur_20": "Score / 20"}
+                )
+                st.plotly_chart(bar2, use_container_width=True)
             else:
-                st.info("Pas de score disponible pour ce ticker.")
+                st.info("Pas de snapshot récente.")
+        else:
+            st.warning("Colonne 'Score_sur_20' absente.")
+
+    if len(tickers_scores) == 1:
+        ticker = tickers_scores[0]
+        st.subheader(f"Détail du score pour {ticker}")
+        if not scores.empty and ticker in scores["ticker"].values:
+            score_t = scores[scores["ticker"] == ticker].sort_values("date", ascending=False)
+            st.dataframe(score_t[["date", "Total_Score", "Score_sur_20"]].reset_index(drop=True))
+        else:
+            st.info("Pas de score disponible pour ce ticker.")
 
 # ==== Données brutes ====
 with st.expander("Afficher les données brutes"):
-    st.markdown("**Historique complet DF :**")
+    st.markdown("**DF historique complet :**")
     st.dataframe(df)
-    st.markdown("**Historique complet Scores :**")
+    st.markdown("**Scores complets :**")
     st.dataframe(scores)
