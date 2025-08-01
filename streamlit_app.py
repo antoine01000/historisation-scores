@@ -3,6 +3,17 @@ import pandas as pd
 
 st.set_page_config(layout="wide", page_title="Historique des métriques")
 
+ Bouton de rafraîchissement manuel
+if st.button("🔄 Rafraîchir les données"):
+    st.cache_data.clear()  # vide le cache
+    st.experimental_rerun()  # relance l'app immédiatement
+
+@st.cache_data
+def load_data():
+    df = pd.read_csv("historique_df.csv", parse_dates=["horodatage", "date"])
+    scores = pd.read_csv("historique_scores.csv", parse_dates=["horodatage", "date"])
+    return df, scores
+
 @st.cache_data
 def load_data():
     df = pd.read_csv("historique_df.csv", parse_dates=["horodatage", "date"])
