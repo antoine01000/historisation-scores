@@ -9,13 +9,11 @@ st.title("📊 Exploration des métriques fondamentales")
 
 # ==== Rafraîchir ====
 def do_refresh():
-    # vide le cache si possible
     try:
         if hasattr(st, "cache_data") and hasattr(st.cache_data, "clear"):
             st.cache_data.clear()
     except Exception:
         pass
-    # relance
     try:
         st.experimental_rerun()
     except AttributeError:
@@ -56,7 +54,6 @@ if pd.notna(last_update):
         st.markdown(f"**Dernière mise à jour enregistrée :** {last_update}")
 
 # ==== Sélections ====
-# Métriques disponibles (intersection avec les colonnes du df)
 POSSIBLE_METRICS = [
     "10y_avg_annual_return_%", "10y_R2", "5y_avg_annual_return_%",
     "SBC_as_%_of_FCF", "net_debt_to_ebitda",
@@ -64,34 +61,44 @@ POSSIBLE_METRICS = [
     "EPS_Growth_5Y", "EPS_Growth_3Y", "ROIC_5Y", "ROI_ANNUAL",
     "Gross_Margin_5Y", "Gross_Margin_Annual"
 ]
-# corrige éventuelle incohérence de nom (dans ton df c'est "5y_avg_annual_return_%")
 METRICS = [m for m in POSSIBLE_METRICS if m in df.columns]
 
 st.sidebar.header("Filtres")
 metric = st.sidebar.selectbox("Choisir la métrique", METRICS)
 tickers_available = sorted(df["ticker"].dropna().unique())
-tickers_selected = st.sidebar.multiselect("Choisir une ou plusieurs entreprises", options=tickers_available, default=tickers_available[:3])
+tickers_selected = st.sidebar.multiselect(
+    "Choisir une ou plusieurs entreprises",
+    options=tickers_available,
+    default=tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
+)
 
 # ==== Filtrage ====
-df_filtered = df[df["ticker"].isin(tickers_selected)].sort_values(["ticker", "horodatage"])
+df_filtered = df[df["ticker"].isin(tickers_selected)].sort_values(["ticker", "date", "horodatage"])
 latest_date = df["date"].max()
 latest_snapshot = df[df["date"] == latest_date]
 
-# ==== Affichage évolution métrique par ticker ====
+# ==== Évolution de la métrique (avec uniquement la date de snapshot sur l'axe X) ====
 st.subheader(f"Évolution de **{metric}** pour {', '.join(tickers_selected)}")
 if metric not in df.columns:
     st.warning(f"La métrique {metric} n'existe pas dans les données.")
 else:
     if not df_filtered.empty:
+        df_plot = df_filtered.copy()
+        # Extraire seulement la date de snapshot (sans l'heure)
+        df_plot["date_snapshot"] = pd.to_datetime(df_plot["date"]).dt.date
+        df_plot = df_plot.sort_values(["ticker", "date_snapshot"])
         fig = px.line(
-            df_filtered,
-            x="horodatage",
+            df_plot,
+            x="date_snapshot",
             y=metric,
             color="ticker",
             markers=True,
             title=f"{metric} — évolution dans le temps",
-            labels={metric: metric, "horodatage": "Horodatage"}
+            labels={metric: metric, "date_snapshot": "Date"}
         )
+        # Afficher uniquement les dates présentes
+        fig.update_xaxes(type="category")
+        fig.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.warning("Aucune donnée disponible pour les tickers sélectionnés.")
@@ -103,7 +110,13 @@ if metric in latest_snapshot.columns:
     if not comp.empty:
         comp_sorted = comp.sort_values(by=metric, ascending=False)
         st.dataframe(comp_sorted.reset_index(drop=True))
-        bar = px.bar(comp_sorted, x="ticker", y=metric, title=f"{metric} — snapshot la plus récente", labels={metric: metric})
+        bar = px.bar(
+            comp_sorted,
+            x="ticker",
+            y=metric,
+            title=f"{metric} — snapshot la plus récente",
+            labels={metric: metric, "ticker": "Ticker"}
+        )
         st.plotly_chart(bar, use_container_width=True)
     else:
         st.info("Pas de valeur disponible pour cette métrique dans la dernière snapshot.")
@@ -114,7 +127,7 @@ else:
 if len(tickers_selected) == 1:
     ticker = tickers_selected[0]
     st.subheader(f"Détail pour {ticker}")
-    df_t = df[df["ticker"] == ticker].sort_values("horodatage")
+    df_t = df[df["ticker"] == ticker].sort_values(["date", "horodatage"])
     st.markdown("**Dernière snapshot complète :**")
     if not df_t.empty:
         st.table(df_t.iloc[-1])
@@ -133,16 +146,21 @@ else:
         scores_filtered = scores[scores["ticker"].isin(tickers_selected)]
         if not scores_filtered.empty:
             latest_scores = scores_filtered[scores_filtered["date"] == scores_filtered["date"].max()]
-            st.dataframe(latest_scores[["ticker", "Score_sur_20", "Total_Score"]].sort_values("Score_sur_20", ascending=False).reset_index(drop=True))
+            st.dataframe(
+                latest_scores[["ticker", "Score_sur_20", "Total_Score"]]
+                .sort_values("Score_sur_20", ascending=False)
+                .reset_index(drop=True)
+            )
         else:
             st.info("Pas de scores pour cette sélection.")
     else:
         st.info("Fichier de scores introuvable ou vide.")
 
-# ==== Optionnel : afficher les données brutes ====
-if st.expander("Afficher les données brutes"):
+# ==== Données brutes ====
+with st.expander("Afficher les données brutes"):
     st.markdown("**DF historique filtré :**")
     st.dataframe(df_filtered)
     st.markdown("**Scores filtrés :**")
     st.dataframe(scores[scores["ticker"].isin(tickers_selected)])
+
 
