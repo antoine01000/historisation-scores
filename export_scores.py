@@ -22,7 +22,6 @@ def calculate_performance_metrics(symbol: str, years: int) -> tuple[float, float
     try:
         start_date = today.replace(year=today.year - years)
     except ValueError:
-        # Cas des 29 février ou dates invalides
         start_date = today - datetime.timedelta(days=365 * years)
     try:
         data = yf.download(
@@ -91,10 +90,11 @@ def fetch_finnhub_metrics(symbol: str, api_key: str) -> dict:
 
 
 def build_scores_dataframe():
-    # Liste des tickers
+    # Liste des tickers (avec SAP et ACN inclus)
     tickers = [
         "AMZN", "ASML", "NVDA", "GOOG", "BKNG", "NEM.HA",
-        "CRM", "INTU", "MA", "MSFT", "SPGI", "V", "SNY", "IONQ", "AAPL", "TSLA", "JNJ"
+        "CRM", "INTU", "MA", "MSFT", "SPGI", "V", "SNY", "IONQ", "AAPL", "TSLA", "JNJ",
+        "SAP", "ACN"
     ]
 
     # --- perf et R² ---
@@ -185,7 +185,7 @@ def build_scores_dataframe():
         if col in df.columns:
             df[col] = df[col].round(2)
 
-    # --- Vérification de df ---
+    # --- Affichage du df historique attendu ---
     print("=== df (fusionné et arrondi) ===")
     print(df.to_string())
 
@@ -425,4 +425,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
