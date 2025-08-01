@@ -22,7 +22,7 @@ def calculate_performance_metrics(symbol: str, years: int) -> tuple[float, float
     try:
         start_date = today.replace(year=today.year - years)
     except ValueError:
-        # Cas des 29 février
+        # Cas des 29 février ou dates invalides
         start_date = today - datetime.timedelta(days=365 * years)
     try:
         data = yf.download(
@@ -169,6 +169,7 @@ def build_scores_dataframe():
     df_finnhub = pd.DataFrame(finnhub_rows)
     df = pd.merge(df, df_finnhub, on='ticker', how='left')
 
+    # --- Arrondis ---
     for col in [
         'Revenue_Growth_5Y',
         'Revenue_Growth_LastYear_%',
@@ -184,7 +185,11 @@ def build_scores_dataframe():
         if col in df.columns:
             df[col] = df[col].round(2)
 
-    # --- Scores ---
+    # --- Vérification de df ---
+    print("=== df (fusionné et arrondi) ===")
+    print(df.to_string())
+
+    # --- Construction des scores ---
     df_score = pd.DataFrame({'ticker': df['ticker']})
 
     def score_linearite_perf10y(v):
@@ -366,7 +371,23 @@ def build_scores_dataframe():
     df_score['Score_sur_20'] = df_score['Score_sur_20'].round(2)
 
     df_score_sorted = df_score.sort_values(by='Score_sur_20', ascending=False)
-    return df_score_sorted
+    return df, df_score_sorted
+
+
+def save_df_history(df):
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    df_export = df.copy()
+    df_export['date'] = today_str
+    df_export['horodatage'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    csv_path = "historique_df.csv"
+
+    if os.path.exists(csv_path):
+        df_old = pd.read_csv(csv_path)
+        combined = pd.concat([df_old, df_export], ignore_index=True)
+        combined = combined.sort_values('horodatage').drop_duplicates(subset=['ticker', 'date'], keep='last')
+        combined.to_csv(csv_path, index=False)
+    else:
+        df_export.to_csv(csv_path, index=False)
 
 
 def save_history(df_score_sorted):
@@ -386,12 +407,22 @@ def save_history(df_score_sorted):
 
 def main():
     try:
-        df_score_sorted = build_scores_dataframe()
+        df, df_score_sorted = build_scores_dataframe()
+        save_df_history(df)
         save_history(df_score_sorted)
         print("✅ Historisation faite.")
     except Exception as e:
         print(f"❌ Erreur : {e}")
         raise
+    finally:
+        # restauration de stderr
+        try:
+            sys.stderr.close()
+        except Exception:
+            pass
+        sys.stderr = original_stderr
+
 
 if __name__ == "__main__":
     main()
+
