@@ -59,7 +59,7 @@ tickers_available = sorted(df["ticker"].dropna().unique())
 latest_date = df["date"].max()
 latest_snapshot = df[df["date"] == latest_date]
 
-# Initialisation persistée
+# Initialisation persistée pour sélections indépendantes
 if "metrics_tickers" not in st.session_state:
     st.session_state.metrics_tickers = tickers_available[:3] if len(tickers_available) >= 3 else tickers_available
 if "scores_tickers" not in st.session_state:
@@ -186,15 +186,19 @@ else:
     if scores_filtered.empty:
         st.warning("Aucune donnée de score pour la sélection.")
     else:
+        scores_filtered_plot = scores_filtered.copy()
+        scores_filtered_plot["date_snapshot"] = pd.to_datetime(scores_filtered_plot["date"]).dt.date
+        scores_filtered_plot = scores_filtered_plot.sort_values(["ticker", "date_snapshot"])
         fig_score = px.line(
-            scores_filtered,
-            x="date",
+            scores_filtered_plot,
+            x="date_snapshot",
             y="Score_sur_20",
             color="ticker",
             markers=True,
             title="Évolution du Score sur 20",
-            labels={"Score_sur_20": "Score / 20", "date": "Date"}
+            labels={"Score_sur_20": "Score / 20", "date_snapshot": "Date"}
         )
+        fig_score.update_xaxes(type="category")
         fig_score.update_layout(xaxis_tickangle=-45)
         st.plotly_chart(fig_score, use_container_width=True)
 
